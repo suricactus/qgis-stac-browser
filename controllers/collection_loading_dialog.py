@@ -23,13 +23,16 @@ class CollectionLoadingDialog(QtWidgets.QDialog, FORM_CLASS):
         self.setupUi(self)
         self.setFixedSize(self.size())
 
-        self.loading_thread = LoadCollectionsThread(
-            Config().apis,
+        self.loadingThread = LoadCollectionsThread(Config().apis,
             on_progress=self.on_progress_update,
             on_error=self.on_error,
             on_finished=self.on_loading_finished)
 
-        self.loading_thread.start()
+        self.loadingThread.progress.connect(self.on_progress_update)
+        self.loadingThread.error.connect(self.on_error)
+        self.loadingThread.finished.connect(self.on_loading_finished())
+
+        self.loadingThread.start()
 
     def on_progress_update(self, progress, api):
         self.label.setText(f'Loading {api}')
@@ -52,5 +55,5 @@ class CollectionLoadingDialog(QtWidgets.QDialog, FORM_CLASS):
 
     def closeEvent(self, event):
         if event.spontaneous():
-            self.loading_thread.terminate()
+            self.loadingThread.terminate()
             self.hooks['on_close']()
