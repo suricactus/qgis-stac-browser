@@ -1,3 +1,5 @@
+from typing import Any
+
 import re
 
 from PyQt5 import uic
@@ -12,9 +14,9 @@ from qgis.core import (
 from qgis.gui import QgsMapLayerComboBox
 from processing.gui.RectangleMapTool import RectangleMapTool
 
-from ..utils import ui
+from stac_browser.utils import ui
 
-
+FORM_CLASS: Any
 FORM_CLASS, _ = uic.loadUiType(ui.path('extent_selector.ui'))
 
 

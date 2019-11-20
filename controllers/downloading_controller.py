@@ -1,92 +1,88 @@
+from typing import (List, Dict, Any, Optional)
+
 import os
 import urllib
 
-from qgis.core import QgsRasterLayer, QgsProject, Qgis
 from PyQt5 import QtCore
+from PyQt5.QtCore import QEvent
+from PyQt5.QtWidgets import QProgressBar
 
-from qgis.PyQt.QtWidgets import QProgressBar
+from qgis.core import (QgsRasterLayer, QgsProject, Qgis)
+from qgis.gui import QgsMessageBar
+from qgis.utils import iface
 
-from ..utils.logging import error
-from ..threads.download_items_thread import DownloadItemsThread
+from stac_browser.utils.logging import error
+from stac_browser.utils.types import (DataT, HooksT)
+from stac_browser.threads.download_items_thread import DownloadItemsThread
+from stac_browser.models.item import Item
 
 
 class DownloadController:
-    def __init__(self, data={}, hooks={}, iface=None):
+    def __init__(self, data: DataT = {}, hooks: HooksT = {}) -> None:
         self.data = data
         self.hooks = hooks
-        self.iface = iface
 
-        self._progress_message_bar = None
-        self._loading_closed = False
+        self._progressMessageBar: Optional[QgsMessageBar] = None
+        self._progress: Optional[QProgressBar] = None
+        self._loadingClosed = False
 
-        self.loading_thread = DownloadItemsThread(
-            self.downloads,
-            self.download_directory,
-            on_progress=self.on_progress_update,
-            on_gdal_error=self.on_gdal_error,
-            on_error=self.on_error,
-            on_add_layer=self.on_add_layer,
-            on_finished=self.on_downloading_finished
-        )
-
-        self.loading_thread.start()
+        self.loadingThread = DownloadItemsThread(self._downloads, self._downloadDirectory)
+        self.loadingThread.process.connect(self._onProgressUpdate)
+        self.loadingThread.error.connect(self._onError)
+        self.loadingThread.gdal_error_signal.connect(self._onGdalError)
+        self.loadingThread.addLayer.connect(self._onAddLayer)
+        self.loadingThread.finish.connect(self._onDownloadingFinished)
+        self.loadingThread.start()
 
     @property
-    def downloads(self):
+    def _downloads(self) -> List[Dict[str, Any]]:
         return self.data.get('downloads', [])
 
     @property
-    def download_directory(self):
+    def _downloadDirectory(self) -> str:
         return self.data.get('download_directory', None)
 
-    def on_gdal_error(self, e):
-        error(self.iface, f'Unable to find \'gdalbuildvrt\' in current path')
+    def _onGdalError(self, err: Exception) -> None:
+        error(iface, f'Unable to find "gdalbuildvrt" in current path')
 
-    def on_error(self, item, e):
-        if type(e) == urllib.error.URLError:
-            error(self.iface, f'Failed to load {item.id}; {e.reason}')
+    def _onError(self, item: Item, err: Exception) -> None:
+        if type(err) == urllib.error.URLError:
+            error(iface, f'Failed to load {item.id}; {err.reason}')
         else:
-            error(self.iface, f'Failed to load {item.id}; {type(e).__name__}')
+            error(iface, f'Failed to load {item.id}; {type(err).__name__}')
 
-    def on_add_layer(self, current_step, total_steps, item,
-                     download_directory):
-        self.on_progress_update(current_step, total_steps, 'ADDING_TO_LAYERS')
-        layer = QgsRasterLayer(
-            os.path.join(
-                download_directory,
-                f'{item.id}.vrt'
-            ),
-            item.id
-        )
+    def _onAddLayer(self, currentStep: int, totalSteps: int, item: Item, downloadDirectory: str) -> None:
+        self._onProgressUpdate(currentStep, totalSteps, 'ADDING_TO_LAYERS')
+
+        filename = os.path.join(downloadDirectory, f'{item.id}.vrt')
+        layer = QgsRasterLayer(filename, item.id)
+
         QgsProject.instance().addMapLayer(layer)
 
-    def on_destroyed(self, event):
-        self._loading_closed = True
-        if not self.loading_thread.isFinished:
-            self.loading_thread.terminate()
+    def _onDestroyed(self, event: QEvent) -> None:
+        self._loadingClosed = True
+        if not self.loadingThread.isFinished:
+            self.loadingThread.terminate()
 
-    def on_progress_update(self, current_step, total_steps, status):
-        if self._loading_closed:
+    def _onProgressUpdate(self, currentStep: int, totalSteps: int, status: str) -> None:
+        if self._loadingClosed:
             return
-        if self._progress_message_bar is None:
-            self._progress_message_bar = self.iface.messageBar().createMessage(
-                status
-            )
-            self._progress_message_bar.destroyed.connect(self.on_destroyed)
+
+        if self._progressMessageBar is None:
+            self._progressMessageBar = iface.messageBar().createMessage(status)
+            self._progressMessageBar.destroyed.connect(self._onDestroyed)
             self._progress = QProgressBar()
-            self._progress.setMaximum(total_steps)
+            self._progress.setMaximum(totalSteps)
             self._progress.setAlignment(
                 QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter
             )
-            self._progress_message_bar.layout().addWidget(self._progress)
-            self.iface.messageBar().pushWidget(
-                self._progress_message_bar,
-                Qgis.Info
-            )
+            self._progressMessageBar.layout().addWidget(self._progress)
+            iface.messageBar().pushWidget(self._progressMessageBar, Qgis.Info)
         else:
-            self._progress_message_bar.setText(status)
+            self._progressMessageBar.setText(status)
 
-        self._progress.setValue(current_step - 1)
+        if self._progress is not None:
+            self._progress.setValue(currentStep - 1)
 
-    def on_downloading_finished(self):
-        self.iface.messageBar().clearWidgets()
+    def _onDownloadingFinished(self) -> None:
+        iface.messageBar().clearWidgets()

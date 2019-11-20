@@ -1,50 +1,56 @@
+from typing import (Dict, Any, List, Callable)
+
 import time
-import urllib
+import urllib.error
 
-from PyQt5 import uic, QtWidgets
+from PyQt5 import uic
+from PyQt5.QtCore import QEvent
+from PyQt5.QtWidgets import (QDialog, QWidget)
 
-from ..utils.config import Config
-from ..utils.logging import error
-from ..utils import ui
-from ..threads.load_collections_thread import LoadCollectionsThread
+from qgis.gui import QgisInterface
+from qgis.utils import iface
+
+from stac_browser.utils import ui
+from stac_browser.utils.config import Config
+from stac_browser.utils.logging import error
+from stac_browser.utils.types import (DataT, HooksT)
+from stac_browser.threads.load_collections_thread import LoadCollectionsThread
+from stac_browser.models.api import API
 
 
+FORM_CLASS: Any
 FORM_CLASS, _ = uic.loadUiType(ui.path('collection_loading_dialog.ui'))
 
 
-class CollectionLoadingDialog(QtWidgets.QDialog, FORM_CLASS):
-    def __init__(self, data={}, hooks={}, parent=None, iface=None):
+class CollectionLoadingDialog(QDialog, FORM_CLASS):
+    def __init__(self, data: DataT = {}, hooks: HooksT = {}, parent: QWidget = None) -> None:
         super(CollectionLoadingDialog, self).__init__(parent)
 
         self.data = data
         self.hooks = hooks
-        self.iface = iface
 
         self.setupUi(self)
         self.setFixedSize(self.size())
 
-        self.loadingThread = LoadCollectionsThread(Config().apis,
-            on_progress=self.on_progress_update,
-            on_error=self.on_error,
-            on_finished=self.on_loading_finished)
+        self.loadingThread = LoadCollectionsThread(Config().apis)
 
-        self.loadingThread.progress.connect(self.on_progress_update)
-        self.loadingThread.error.connect(self.on_error)
-        self.loadingThread.finished.connect(self.on_loading_finished())
+        self.loadingThread.progress.connect(self._onProgressUpdate)
+        self.loadingThread.error.connect(self._onError)
+        self.loadingThread.finished.connect(self._onLoadingFinished)
 
         self.loadingThread.start()
 
-    def on_progress_update(self, progress, api):
+    def _onProgressUpdate(self, progress: float, api: API) -> None:
         self.label.setText(f'Loading {api}')
         self.progressBar.setValue(int(progress * 100))
 
-    def on_error(self, e, api):
-        if type(e) == urllib.error.URLError:
-            error(self.iface, f'Failed to load {api.href}; {e.reason}')
+    def _onError(self, err: Exception, api: API) -> None:
+        if type(err) == urllib.error.URLError:
+            error(iface, f'Failed to load {api.href}; {err.reason}')
         else:
-            error(self.iface, f'Failed to load {api.href}; {type(e).__name__}')
+            error(iface, f'Failed to load {api.href}; {type(err).__name__}')
 
-    def on_loading_finished(self, apis):
+    def _onLoadingFinished(self, apis: List[API]) -> None:
         config = Config()
         config.apis = apis
         config.last_update = time.time()
@@ -53,7 +59,7 @@ class CollectionLoadingDialog(QtWidgets.QDialog, FORM_CLASS):
         self.progressBar.setValue(100)
         self.hooks['on_finished'](apis)
 
-    def closeEvent(self, event):
+    def closeEvent(self, event: QEvent) -> None:
         if event.spontaneous():
             self.loadingThread.terminate()
             self.hooks['on_close']()

@@ -1,24 +1,28 @@
-from PyQt5 import uic, QtWidgets
+from typing import Any
+from PyQt5 import uic
+from PyQt5.QtWidgets import (QDialog, QWidget)
 
-from ..utils import ui
+from stac_browser.utils import ui
 
 
+FORM_CLASS: Any
 FORM_CLASS, _ = uic.loadUiType(ui.path('about_dialog.ui'))
 
 
-class AboutDialog(QtWidgets.QDialog, FORM_CLASS):
-    def __init__(self, path=None, parent=None, iface=None):
+class AboutDialog(QDialog, FORM_CLASS):
+    def __init__(self, path: str, parent: QWidget = None) -> None:
+        assert isinstance(path, str), 'provided path must be a string'
+
         super(AboutDialog, self).__init__(parent)
-        self.iface = iface
 
         self.setupUi(self)
 
-        if path is not None:
-            with open(path, 'r') as f:
-                contents = f.read()
-            self.textBrowser.setHtml(contents)
+        with open(path, 'r') as f:
+            contents = f.read()
 
-        self.closeButton.clicked.connect(self.on_close_clicked)
+        self.textBrowser.setHtml(contents)
 
-    def on_close_clicked(self):
+        self.closeButton.clicked.connect(self._onCloseClicked)
+
+    def _onCloseClicked(self) -> None:
         self.reject()

@@ -1,9 +1,14 @@
+from typing import (List, Dict, Any, Tuple, Callable)
+
 import time
 import os.path
 import sys
 
 from PyQt5.QtGui import QIcon
-from PyQt5.QtWidgets import QAction
+from PyQt5.QtWidgets import (QWidget, QAction)
+
+from qgis.gui import QgisInterface
+from qgis.core import QgsRectangle
 
 from .resources import *
 from .controllers.collection_loading_dialog import CollectionLoadingDialog
@@ -17,25 +22,27 @@ from .controllers.about_dialog import AboutDialog
 from .utils.config import Config
 from .utils.logging import error
 from .utils import crs
+from .models.api import API
+from .models.item import Item
 
 
 class STACBrowser:
-    def __init__(self, iface):
+    def __init__(self, iface: QgisInterface) -> None:
         self.iface = iface
         self.plugin_dir = os.path.dirname(__file__)
 
         self.actions = []
         self.application = None
-        self.menu = u'&STAC Browser'
+        self.menu = 'STAC Browser'
 
-        self.current_window = 'COLLECTION_LOADING'
+        self.currentWindow = 'COLLECTION_LOADING'
 
         self.windows = {
             'COLLECTION_LOADING': {
                 'class': CollectionLoadingDialog,
                 'hooks': {
-                    'on_finished': self.collection_load_finished,
-                    'on_close': self.on_close
+                    'on_finished': self.collectionLoadFinished,
+                    'on_close': self.onClose
                 },
                 'data': None,
                 'dialog': None
@@ -43,8 +50,8 @@ class STACBrowser:
             'QUERY': {
                 'class': QueryDialog,
                 'hooks': {
-                    'on_close': self.on_close,
-                    'on_search': self.on_search
+                    'on_close': self.onClose,
+                    'on_search': self.onSearch
                 },
                 'data': None,
                 'dialog': None
@@ -52,9 +59,9 @@ class STACBrowser:
             'ITEM_LOADING': {
                 'class': ItemLoadingDialog,
                 'hooks': {
-                    'on_close': self.on_close,
-                    'on_finished': self.item_load_finished,
-                    'on_error': self.results_error
+                    'on_close': self.onClose,
+                    'on_finished': self.itemLoadFinished,
+                    'on_error': self.resultsError
                 },
                 'data': None,
                 'dialog': None
@@ -62,94 +69,93 @@ class STACBrowser:
             'RESULTS': {
                 'class': ResultsDialog,
                 'hooks': {
-                    'on_close': self.on_close,
-                    'on_back': self.on_back,
-                    'on_download': self.on_download,
-                    'select_downloads': self.select_downloads
+                    'on_close': self.onClose,
+                    'on_back': self.onBack,
+                    'on_download': self.onDownload,
+                    'select_downloads': self.selectDownloads
                 },
                 'data': None,
                 'dialog': None
             },
         }
 
-    def on_search(self, api_collections, extent_rect, time_period, query):
-        (start_time, end_time) = time_period
+    def onSearch(self, apiCollections: List[API], extentRect: QgsRectangle, timePeriod: Tuple[str, str], query: Dict[str, Any]) -> None:
+        (startTime, endTime) = timePeriod
 
         # the API consumes only EPSG:4326
-        extent_rect = crs.transform(extent_rect.crs(), 4326, extent_rect)
+        extentRect = crs.transform(extentRect.crs(), 4326, extentRect)
 
         extent = [
-            extent_rect.xMinimum(),
-            extent_rect.yMinimum(),
-            extent_rect.xMaximum(),
-            extent_rect.yMaximum()
+            extentRect.xMinimum(),
+            extentRect.yMinimum(),
+            extentRect.xMaximum(),
+            extentRect.yMaximum()
         ]
 
         self.windows['ITEM_LOADING']['data'] = {
-            'api_collections': api_collections,
+            'api_collections': apiCollections,
             'extent': extent,
-            'start_time': start_time,
-            'end_time': end_time,
+            'start_time': startTime,
+            'end_time': endTime,
             'query': query,
         }
-        self.current_window = 'ITEM_LOADING'
+        self.currentWindow = 'ITEM_LOADING'
         self.windows['QUERY']['dialog'].close()
-        self.load_window()
+        self._loadWindow()
 
-    def on_back(self):
+    def onBack(self) -> None:
         self.windows['RESULTS']['data'] = None
         self.windows['RESULTS']['dialog'].close()
         self.windows['RESULTS']['dialog'] = None
 
-        self.current_window = 'QUERY'
-        self.load_window()
+        self.currentWindow = 'QUERY'
+        self._loadWindow()
 
-    def on_close(self):
+    def onClose(self) -> None:
         if self.windows is None:
             return
-        self.reset_windows()
+        self.resetWindows()
 
-    def on_download(self, download_items, download_directory):
-        self._download_controller = DownloadController(
+    def onDownload(self, downloadItems: List[Item], downloadDir: str) -> None:
+        self._downloadController = DownloadController(
             data={
-                'downloads': download_items,
-                'download_directory': download_directory,
+                'downloads': downloadItems,
+                'download_directory': downloadDir,
             },
-            hooks={},
-            iface=self.iface
+            hooks={}
         )
-        self.reset_windows()
+        self.resetWindows()
 
-    def downloading_finished(self):
+    def downloadingFinished(self) -> None:
         self.windows['DOWNLOADING']['dialog'].close()
-        self.current_window = 'COLLECTION_LOADING'
-        self.reset_windows()
+        self.currentWindow = 'COLLECTION_LOADING'
+        self.resetWindows()
 
-    def collection_load_finished(self, apis):
+    def collectionLoadFinished(self, apis: List[API]) -> None:
         self.windows['QUERY']['data'] = {'apis': apis}
-        self.current_window = 'QUERY'
+        self.currentWindow = 'QUERY'
         self.windows['COLLECTION_LOADING']['dialog'].close()
-        self.load_window()
+        self._loadWindow()
 
-    def results_error(self):
+    def resultsError(self) -> None:
         self.windows['ITEM_LOADING']['dialog'].close()
         self.windows['ITEM_LOADING']['dialog'] = None
         self.windows['ITEM_LOADING']['data'] = None
-        self.current_window = 'QUERY'
-        self.load_window()
+        self.currentWindow = 'QUERY'
+        self._loadWindow()
 
-    def item_load_finished(self, items):
+    def itemLoadFinished(self, items: List[Item]) -> None:
         self.windows['RESULTS']['data'] = {'items': items}
-        self.current_window = 'RESULTS'
+        self.currentWindow = 'RESULTS'
         self.windows['ITEM_LOADING']['dialog'].close()
         self.windows['ITEM_LOADING']['data'] = None
         self.windows['ITEM_LOADING']['dialog'] = None
-        self.load_window()
+        self._loadWindow()
 
-    def select_downloads(self, items, download_directory):
+    def selectDownloads(self, items: List[Item], downloadDir: str) -> None:
         dialog = DownloadSelectionDialog(
             data={'items': items},
-            hooks={'on_close': self.on_close},
+            hooks={'on_close': self.onClose},
             parent=self.windows['RESULTS']['dialog']
         )
 
@@ -158,56 +164,65 @@ class STACBrowser:
         if not result:
             return
 
-        self.on_download(dialog.downloads, download_directory)
+        self.onDownload(dialog.downloads, downloadDir)
 
-    def add_action(self, icon_path, text, callback, enabled_flag=True,
-                   add_to_menu=True, add_to_toolbar=True, status_tip=None,
-                   whats_this=None, parent=None):
+    def addAction(self, 
+                icon_path: str, 
+                text: str, 
+                callback: Callable, 
+                enabledFlag: bool = True,
+                addToMenu: bool = True, 
+                addToToolbar: bool = True, 
+                statusTip: str = None,
+                whatsThis: str = None, 
+                parent: QWidget = None) -> QAction:
         icon = QIcon(icon_path)
         action = QAction(icon, text, parent)
         action.triggered.connect(callback)
-        action.setEnabled(enabled_flag)
+        action.setEnabled(enabledFlag)
 
-        if status_tip is not None:
-            action.setStatusTip(status_tip)
+        if statusTip is not None:
+            action.setStatusTip(statusTip)
 
-        if whats_this is not None:
-            action.setWhatsThis(whats_this)
+        if whatsThis is not None:
+            action.setWhatsThis(whatsThis)
 
-        if add_to_toolbar:
+        if addToToolbar:
             self.iface.addToolBarIcon(action)
 
-        if add_to_menu:
+        if addToMenu:
             self.iface.addPluginToWebMenu(self.menu, action)
 
         self.actions.append(action)
 
         return action
 
-    def load_window(self):
-        correct_version = self.check_version()
-        if not correct_version:
+    def _loadWindow(self) -> None:
+        isPythonVersionOk = self.checkPythonVersion()
+
+        if not isPythonVersionOk:
             return
-        if self.current_window == 'COLLECTION_LOADING':
+
+        if self.currentWindow == 'COLLECTION_LOADING':
             config = Config()
+
             if config.last_update is not None \
                     and time.time() - config.last_update \
                     < config.api_update_interval:
-                self.current_window = 'QUERY'
+                self.currentWindow = 'QUERY'
                 self.windows['QUERY']['data'] = {'apis': config.apis}
 
-        window = self.windows.get(self.current_window, None)
+        window = self.windows.get(self.currentWindow, None)
 
         if window is None:
-            error(self.iface, f'Window {self.current_window} does not exist')
+            error(self.iface, f'Window {self.currentWindow} does not exist')
             return
 
         if window['dialog'] is None:
             window['dialog'] = window.get('class')(
                 data=window.get('data'),
                 hooks=window.get('hooks'),
-                parent=self.iface.mainWindow(),
-                iface=self.iface
+                parent=self.iface.mainWindow()
             )
             window['dialog'].show()
         else:
@@ -215,15 +230,17 @@ class STACBrowser:
             window['dialog'].show()
             window['dialog'].activateWindow()
 
-    def reset_windows(self):
+    def resetWindows(self) -> None:
         for key, window in self.windows.items():
             if window['dialog'] is not None:
                 window['dialog'].close()
+
             window['data'] = None
             window['dialog'] = None
-        self.current_window = 'COLLECTION_LOADING'
 
-    def check_version(self):
+        self.currentWindow = 'COLLECTION_LOADING'
+
+    def checkPythonVersion(self) -> bool:
         if sys.version_info < (3, 6):
             v = '.'.join((
                 str(sys.version_info.major),
@@ -240,51 +257,48 @@ class STACBrowser:
             return False
         return True
 
-    def configure_apis(self):
-        correct_version = self.check_version()
-        if not correct_version:
+    def _configureApis(self) -> None:
+        correctVersion = self.checkPythonVersion()
+
+        if not correctVersion:
             return
+
         dialog = ConfigureAPIDialog(
             data={'apis': Config().apis},
             hooks={},
-            parent=self.iface.mainWindow(),
-            iface=self.iface
+            parent=self.iface.mainWindow()
         )
         dialog.exec_()
 
-    def about(self):
+    def _about(self) -> None:
         dialog = AboutDialog(
             os.path.join(self.plugin_dir, 'about.html'),
-            parent=self.iface.mainWindow(),
-            iface=self.iface
+            parent=self.iface.mainWindow()
         )
         dialog.exec_()
 
-    def initGui(self):
-        icon_path = ':/plugins/stac_browser/assets/icon.png'
-        self.add_action(
-            icon_path,
+    def initGui(self) -> None:
+        self.addAction(
+            ':/plugins/stac_browser/assets/icon.png',
             text='Browse STAC Catalogs',
-            callback=self.load_window,
+            callback=self._loadWindow,
             parent=self.iface.mainWindow())
 
-        icon_path = ':/plugins/stac_browser/assets/cog.svg'
-        self.add_action(
-            icon_path,
+        self.addAction(
+            ':/plugins/stac_browser/assets/cog.svg',
             text='Configure APIs',
-            add_to_toolbar=False,
-            callback=self.configure_apis,
+            addToToolbar=False,
+            callback=self._configureApis,
             parent=self.iface.mainWindow())
 
-        icon_path = ':/plugins/stac_browser/assets/info.svg'
-        self.add_action(
-            icon_path,
+        self.addAction(
+            ':/plugins/stac_browser/assets/info.svg',
             text='About',
-            add_to_toolbar=False,
-            callback=self.about,
+            addToToolbar=False,
+            callback=self._about,
             parent=self.iface.mainWindow())
 
-    def unload(self):
+    def unload(self) -> None:
         for action in self.actions:
-            self.iface.removePluginWebMenu(u'&STAC Browser', action)
+            self.iface.removePluginWebMenu('STAC Browser', action)
             self.iface.removeToolBarIcon(action)

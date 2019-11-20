@@ -1,79 +1,83 @@
-from PyQt5 import uic, QtWidgets
+from typing import (Any, List)
 
-from ..utils import ui
-from ..utils.config import Config
+from PyQt5 import uic
+from PyQt5.QtWidgets import (QDialog, QWidget, QListWidgetItem)
 
-from ..controllers.add_edit_api_dialog import AddEditAPIDialog
+from stac_browser.utils import ui
+from stac_browser.utils.config import Config
+from stac_browser.utils.types import (DataT, HooksT)
+from stac_browser.controllers.add_edit_api_dialog import AddEditAPIDialog
+from stac_browser.models.api import API
 
-
+FORM_CLASS: Any
 FORM_CLASS, _ = uic.loadUiType(ui.path('configure_apis_dialog.ui'))
 
 
-class ConfigureAPIDialog(QtWidgets.QDialog, FORM_CLASS):
-    def __init__(self, data={}, hooks={}, parent=None, iface=None):
+class ConfigureAPIDialog(QDialog, FORM_CLASS):
+    def __init__(self, data: DataT = {}, hooks: HooksT = {}, parent: QWidget = None) -> None:
         super(ConfigureAPIDialog, self).__init__(parent)
 
         self.data = data
         self.hooks = hooks
-        self.iface = iface
 
         self.setupUi(self)
 
-        self.populate_api_list()
-        self.populate_api_details()
+        self._populateApiList()
+        self._populateApiDetails()
 
-        self.list.activated.connect(self.on_list_clicked)
+        self.list.activated.connect(self._onListClicked)
+        self.apiAddButton.clicked.connect(self._onAddApiClicked)
+        self.apiEditButton.clicked.connect(self._onEditApiClicked)
+        self.closeButton.clicked.connect(self._onCloseClicked)
 
-        self.apiAddButton.clicked.connect(self.on_add_api_clicked)
-        self.apiEditButton.clicked.connect(self.on_edit_api_clicked)
-        self.closeButton.clicked.connect(self.on_close_clicked)
-
-    def on_close_clicked(self):
+    def _onCloseClicked(self) -> None:
         self.reject()
 
-    def on_add_api_clicked(self):
+    def _onAddApiClicked(self) -> None:
         dialog = AddEditAPIDialog(
             data={'api': None},
             hooks={
-                "remove_api": self.remove_api,
-                "add_api": self.add_api,
-                "edit_api": self.edit_api
+                "remove_api": self.removeApi,
+                "add_api": self.addApi,
+                "edit_api": self.editApi
             },
-            parent=self,
-            iface=self.iface
+            parent=self
         )
+
         dialog.exec_()
 
-    def on_edit_api_clicked(self):
+    def _onEditApiClicked(self) -> None:
         dialog = AddEditAPIDialog(
-            data={'api': self.selected_api},
+            data={'api': self.selectedApi},
             hooks={
-                "remove_api": self.remove_api,
-                "add_api": self.add_api,
-                "edit_api": self.edit_api
+                "remove_api": self.removeApi,
+                "add_api": self.addApi,
+                "edit_api": self.editApi
             },
-            parent=self,
-            iface=self.iface
+            parent=self
         )
+
         dialog.exec_()
 
-    def edit_api(self, api):
+    def editApi(self, api: API) -> None:
         config = Config()
-        new_apis = []
+        newApis = []
 
         for a in config.apis:
             if a.id == api.id:
                 continue
-            new_apis.append(a)
-        new_apis.append(api)
-        config.apis = new_apis
+
+            newApis.append(a)
+
+        newApis.append(api)
+        config.apis = newApis
         config.save()
 
         self.data['apis'] = config.apis
-        self.populate_api_list()
-        self.populate_api_details()
+        self._populateApiList()
+        self._populateApiDetails()
 
-    def add_api(self, api):
+    def addApi(self, api: API) -> None:
         config = Config()
         apis = config.apis
         apis.append(api)
@@ -81,33 +85,35 @@ class ConfigureAPIDialog(QtWidgets.QDialog, FORM_CLASS):
         config.save()
 
         self.data['apis'] = config.apis
-        self.populate_api_list()
-        self.populate_api_details()
+        self._populateApiList()
+        self._populateApiDetails()
 
-    def remove_api(self, api):
+    def removeApi(self, api: API) -> None:
         config = Config()
-        new_apis = []
+        newApis = []
 
         for a in config.apis:
             if a.id == api.id:
                 continue
-            new_apis.append(a)
 
-        config.apis = new_apis
+            newApis.append(a)
+
+        config.apis = newApis
         config.save()
 
         self.data['apis'] = config.apis
-        self.populate_api_list()
-        self.populate_api_details()
+        self._populateApiList()
+        self._populateApiDetails()
 
-    def populate_api_list(self):
+    def _populateApiList(self) -> None:
         self.list.clear()
-        for api in self.apis:
-            api_node = QtWidgets.QListWidgetItem(self.list)
-            api_node.setText(f'{api.title}')
 
-    def populate_api_details(self):
-        if self.selected_api is None:
+        for api in self.apis:
+            apiNode = QListWidgetItem(self.list)
+            apiNode.setText(f'{api.title}')
+
+    def _populateApiDetails(self) -> None:
+        if self.selectedApi is None:
             self.apiUrlLabel.hide()
             self.apiUrlValue.hide()
             self.apiTitleLabel.hide()
@@ -119,10 +125,10 @@ class ConfigureAPIDialog(QtWidgets.QDialog, FORM_CLASS):
             self.apiEditButton.hide()
             return
 
-        self.apiUrlValue.setText(self.selected_api.href)
-        self.apiTitleValue.setText(self.selected_api.title)
-        self.apiVersionValue.setText(self.selected_api.version)
-        self.apiDescriptionValue.setText(self.selected_api.description)
+        self.apiUrlValue.setText(self.selectedApi.href)
+        self.apiTitleValue.setText(self.selectedApi.title)
+        self.apiVersionValue.setText(self.selectedApi.version)
+        self.apiDescriptionValue.setText(self.selectedApi.description)
 
         self.apiUrlLabel.show()
         self.apiUrlValue.show()
@@ -135,15 +141,15 @@ class ConfigureAPIDialog(QtWidgets.QDialog, FORM_CLASS):
         self.apiEditButton.show()
 
     @property
-    def apis(self):
+    def apis(self) -> List[API]:
         return self.data.get('apis', [])
 
     @property
-    def selected_api(self):
+    def selectedApi(self) -> API:
         items = self.list.selectedIndexes()
         for i in items:
             return self.apis[i.row()]
         return None
 
-    def on_list_clicked(self):
-        self.populate_api_details()
+    def _onListClicked(self) -> None:
+        self._populateApiDetails()

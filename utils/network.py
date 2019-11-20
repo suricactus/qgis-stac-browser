@@ -5,7 +5,7 @@ import json
 import os
 
 
-def ssl_context():
+def sslContext():
     if os.environ.get('STAC_DEBUG', False):
         return ssl._create_unverified_context()
     return ssl.SSLContext()
@@ -20,11 +20,11 @@ def request(url, data=None):
         r = urllib.request.urlopen(
             r,
             body_bytes,
-            context=ssl_context(),
+            context=sslContext(),
             timeout=5
         )
     else:
-        r = urllib.request.urlopen(r, context=ssl_context(), timeout=5)
+        r = urllib.request.urlopen(r, context=sslContext(), timeout=5)
 
     return json.loads(r.read())
 
@@ -32,7 +32,7 @@ def request(url, data=None):
 def download(url, path):
     with urllib.request.urlopen(
             url,
-            context=ssl_context(),
+            context=sslContext(),
             timeout=5) as response, \
             open(path, 'wb') as f:
         shutil.copyfileobj(response, f)

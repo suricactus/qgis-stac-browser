@@ -2,7 +2,7 @@ import os
 import subprocess
 
 
-def gdal_path():
+def gdalPath():
     common_paths = [
         '',
         '/Library/Frameworks/GDAL.framework/Programs',

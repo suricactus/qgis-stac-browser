@@ -1,3 +1,5 @@
+from typing import Any
+
 from datetime import datetime
 
 from PyQt5 import uic, QtWidgets, QtCore
@@ -5,37 +7,38 @@ from PyQt5.QtGui import QStandardItemModel
 from PyQt5.QtWidgets import (QTreeWidgetItem, QFormLayout)
 
 from qgis.core import QgsMapLayerProxyModel
+from qgis.utils import iface
 
-from ..utils import ui
-from ..utils.logging import error
-from .extent_selector import ExtentSelector
+from stac_browser.utils import ui
+from stac_browser.utils.logging import error
+from stac_browser.controllers.extent_selector import ExtentSelector
 
-
+FORM_CLASS: Any
 FORM_CLASS, _ = uic.loadUiType(ui.path('query_dialog.ui'))
 
 
 class QueryDialog(QtWidgets.QDialog, FORM_CLASS):
-    def __init__(self, data={}, hooks={}, parent=None, iface=None):
+    def __init__(self, data={}, hooks={}, parent=None):
         super(QueryDialog, self).__init__(parent)
 
         self.data = data
         self.hooks = hooks
-        self.iface = iface
-
-        self.setupUi(self)
-
-        self._api_tree_model = None
+        self._apiTreeModel = None
 
         self.extentSelector = ExtentSelector(parent=self,
                                              iface=iface,
                                              filters=QgsMapLayerProxyModel.VectorLayer
                                              | QgsMapLayerProxyModel.RasterLayer)
+        
+        self.setupUi(self)
+
         self.filterLayout.setWidget(0, QFormLayout.FieldRole, self.extentSelector)
 
         self.extentSelector.show()
 
-        self.populate_time_periods()
-        self.populate_collection_list()
+        self.populateTimePeriods()
+        self.populateCollectionList()
+
 
         self.selectAllCollectionsButton.clicked.connect(self.on_select_all_collections_clicked)
         self.deselectAllCollectionsButton.clicked.connect(self.on_deselect_all_collections_clicked)
@@ -44,12 +47,12 @@ class QueryDialog(QtWidgets.QDialog, FORM_CLASS):
         self.searchButton.clicked.connect(self.on_search_clicked)
         self.cancelButton.clicked.connect(self.on_cancel_clicked)
 
-    def populate_time_periods(self):
+    def populateTimePeriods(self):
         now = QtCore.QDateTime.currentDateTimeUtc()
         self.endPeriod.setDateTime(now)
 
-    def populate_collection_list(self):
-        self._api_tree_model = QStandardItemModel(self.treeView)
+    def populateCollectionList(self):
+        self._apiTreeModel = QStandardItemModel(self.treeView)
         for api in self.apis:
             api_node = QTreeWidgetItem(self.treeView)
             api_node.setText(0, f'{api.title}')
@@ -72,11 +75,11 @@ class QueryDialog(QtWidgets.QDialog, FORM_CLASS):
         valid = True
 
         if not self.extentSelector.is_valid():
-            error(self.iface, "Extent layer is not valid")
+            error(iface, "Extent layer is not valid")
             valid = False
         start_time, end_time = self.time_period
         if start_time > end_time:
-            error(self.iface, "Start time can not be after end time")
+            error(iface, "Start time can not be after end time")
             valid = False
         return valid
 

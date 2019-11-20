@@ -5,24 +5,18 @@ from ..models.api import API
 
 
 class LoadAPIDataThread(QThread):
-    error_signal = pyqtSignal(Exception)
-    finished_signal = pyqtSignal(API)
+    error = pyqtSignal(Exception)
+    success = pyqtSignal(API)
 
-    def __init__(self, api, on_error=None, on_finished=None):
+    def __init__(self, api: API) -> None:
         QThread.__init__(self)
         self.api = api
 
-        self.on_error = on_error
-        self.on_finished = on_finished
-
-        self.error_signal.connect(self.on_error)
-        self.finished_signal.connect(self.on_finished)
-
-    def run(self):
+    def run(self) -> None:
         try:
             self.api.load()
-            self.finished_signal.emit(self.api)
-        except URLError as e:
-            self.error_signal.emit(e)
-        except socket.timeout as e:
-            self.error_signal.emit(e)
+            self.success.emit(self.api)
+        except URLError as err:
+            self.error.emit(err)
+        except socket.timeout as err:
+            self.error.emit(err)

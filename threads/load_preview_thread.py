@@ -6,20 +6,18 @@ from ..models.item import Item
 
 
 class LoadPreviewThread(QThread):
-    finished_signal = pyqtSignal(Item, bool)
+    finished = pyqtSignal(Item, bool)
 
-    def __init__(self, item, on_image_loaded=None):
+    def __init__(self, item: Item) -> None:
         QThread.__init__(self)
         self.item = item
-        self.on_image_loaded = on_image_loaded
 
-        self.finished_signal.connect(self.on_image_loaded)
-
-    def run(self):
+    def run(self) -> None:
         try:
-            network.download(self.item.thumbnail_url, self.item.thumbnail_path)
-            self.finished_signal.emit(self.item, False)
+            network.download(self.item.thumbnailUrl, self.item.thumbnailPath)
+
+            self.finished.emit(self.item, False)
         except URLError:
-            self.finished_signal.emit(self.item, True)
+            self.finished.emit(self.item, True)
         except socket.timeout:
-            self.finished_signal.emit(self.item, True)
+            self.finished.emit(self.item, True)

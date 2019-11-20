@@ -1,53 +1,57 @@
+from typing import (List, Dict, Any, Callable, Optional) 
+
 import os
 import subprocess
 import hashlib
 import tempfile
 from ..utils import network
+from ..utils.types import (Properties, BBox)
 from ..models.link import Link
+from ..models.collection import Collection
 
 
 class Item:
-    def __init__(self, api=None, json={}):
+    def __init__(self, api: Any = None, json: Dict[str, Any] = {}) -> None:
         self._api = api
         self._json = json
 
     @property
-    def hashed_id(self):
+    def hashedId(self) -> str:
         return hashlib.sha256(
             f'{self.api.href}/collections/{self.collection.id}/items/{self.id}'
             .encode('utf-8')
         ).hexdigest()
 
     @property
-    def api(self):
+    def api(self) -> Any:
         return self._api
 
     @property
-    def id(self):
+    def id(self) -> str:
         return self._json.get('id', None)
 
     @property
-    def type(self):
+    def type(self) -> str:
         return self._json.get('type', None)
 
     @property
-    def geometry(self):
+    def geometry(self) -> str:
         return self._json.get('geometry', None)
 
     @property
-    def bbox(self):
+    def bbox(self) -> BBox:
         return self._json.get('bbox', None)
 
     @property
-    def properties(self):
+    def properties(self) -> Properties:
         return self._json.get('properties', {})
 
     @property
-    def links(self):
+    def links(self) -> List[Link]:
         return [Link(l) for l in self._json.get('links', [])]
 
     @property
-    def assets(self):
+    def assets(self) -> List['Asset']:
         assets = []
         for key, d in self._json.get('assets', {}).items():
             assets.append(Asset(key, d, item=self))
@@ -55,7 +59,7 @@ class Item:
         return assets
 
     @property
-    def collection(self):
+    def collection(self) -> Collection:
         collection_id = self.properties.get('collection', None)
         if collection_id is None:
             collection_id = self._json.get('collection', None)
@@ -67,47 +71,47 @@ class Item:
         return None
 
     @property
-    def thumbnail(self):
+    def thumbnail(self) -> Optional['Asset']:
         for asset in self.assets:
             if asset.key == 'thumbnail':
                 return asset
         return None
 
     @property
-    def thumbnail_url(self):
+    def thumbnailUrl(self) -> Optional[str]:
         if self.thumbnail is None:
             return None
 
         return self.thumbnail.href
 
     @property
-    def temp_dir(self):
-        temp_dir = os.path.join(
+    def tempDir(self) -> str:
+        tempDir = os.path.join(
             tempfile.gettempdir(),
             'qgis-stac-browser',
-            self.hashed_id
+            self.hashedId
         )
-        if not os.path.exists(temp_dir):
-            os.makedirs(temp_dir)
+        if not os.path.exists(tempDir):
+            os.makedirs(tempDir)
 
-        return temp_dir
+        return tempDir
 
     @property
-    def thumbnail_path(self):
+    def thumbnailPath(self) -> Optional[str]:
         if not self.collection:
-            return
+            return None
 
-        return os.path.join(self.temp_dir, 'thumbnail.jpg')
+        return os.path.join(self.tempDir, 'thumbnail.jpg')
 
-    def thumbnail_downloaded(self):
-        return self._thumbnail is not None
+    def thumbnailDownloaded(self) -> bool:
+        return self.thumbnail is not None
 
-    def download_steps(self, options):
+    def downloadSteps(self, options) -> int:
         steps = 0
 
-        for asset_key in options.get('assets', []):
+        for assetKey in options.get('assets', []):
             for asset in self.assets:
-                if asset.key != asset_key:
+                if asset.key != assetKey:
                     continue
 
                 if options.get('stream_cogs', False) and asset.cog is not None:
@@ -117,12 +121,14 @@ class Item:
 
         if options.get('add_to_layers', False):
             steps += 1
+
         return steps
 
-    def download(self, gdal_path, options, download_directory, on_update=None):
-        item_download_directory = os.path.join(download_directory, self.id)
-        if not os.path.exists(item_download_directory):
-            os.makedirs(item_download_directory)
+    def download(self, gdalPath: str, options: Properties, downloadDir: str, onUpdate: Callable = None) -> None:
+        itemDownloadDir = os.path.join(downloadDir, self.id)
+
+        if not os.path.exists(itemDownloadDir):
+            os.makedirs(itemDownloadDir)
 
         raster_filenames = []
 
@@ -135,25 +141,25 @@ class Item:
                     raster_filenames.append(asset.cog)
                     continue
 
-                if on_update is not None:
-                    on_update(f'Downloading {asset.href}')
+                if onUpdate is not None:
+                    onUpdate(f'Downloading {asset.href}')
 
                 temp_filename = os.path.join(
-                    item_download_directory,
+                    itemDownloadDir,
                     asset.href.split('/')[-1]
                 )
-                if asset.is_raster:
+                if asset.isRaster:
                     raster_filenames.append(temp_filename)
                 network.download(asset.href, temp_filename)
 
         if options.get('add_to_layers', False):
-            if on_update is not None:
-                on_update(f'Building Virtual Raster...')
+            if onUpdate is not None:
+                onUpdate(f'Building Virtual Raster...')
 
             arguments = [
-                os.path.join(gdal_path, 'gdalbuildvrt'),
+                os.path.join(gdalPath, 'gdalbuildvrt'),
                 '-separate',
-                os.path.join(download_directory, f'{self.id}.vrt')
+                os.path.join(downloadDir, f'{self.id}.vrt')
             ]
             arguments.extend(raster_filenames)
             subprocess.run(arguments)
@@ -163,59 +169,59 @@ class Item:
 
 
 class Asset:
-    def __init__(self, key, json={}, item=None):
+    def __init__(self, key: str, json: Dict[str, Any], item: Item) -> None:
         self._key = key
         self._json = json
         self._item = item
 
     @property
-    def is_raster(self):
+    def isRaster(self) -> bool:
         return (self._json.get('eo:name', None) is not None)
 
     @property
-    def key(self):
+    def key(self) -> str:
         return self._key
 
     @property
-    def cog(self):
+    def cog(self) -> Optional[str]:
         if self.type in ['image/x.geotiff', 'image/vnd.stac.geotiff']:
             return f'/vsicurl/{self.href}'
 
         return None
 
     @property
-    def href(self):
-        return self._json.get('href', None)
+    def href(self) -> str:
+        return self._json.get('href', '')
 
     @property
-    def title(self):
-        return self._json.get('title', None)
+    def title(self) -> str:
+        return self._json.get('title', '')
 
     @property
-    def pretty_title(self):
+    def prettyTitle(self) -> str:
         if self.title is not None:
             return self.title
 
         return self.key
 
     @property
-    def type(self):
+    def type(self) -> Optional[str]:
         return self._json.get('type', None)
 
     @property
-    def band(self):
+    def band(self) -> int:
         if self._item.collection is None:
             return -1
 
-        collection_bands = self._item.collection.properties.get('eo:bands', [])
+        collectionBands = self._item.collection.properties.get('eo:bands', [])
 
-        for i, c in enumerate(collection_bands):
+        for i, c in enumerate(collectionBands):
             if c.get('name', None) == self.key:
                 return i
 
         return -1
 
-    def __lt__(self, other):
+    def __lt__(self, other: 'Asset') -> bool:
         if self.band != -1 and other.band != -1:
             return self.band < other.band
 

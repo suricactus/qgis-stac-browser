@@ -9,7 +9,7 @@ EasyCrs = Union[int, QgsCoordinateReferenceSystem]
 crs4326 = QgsCoordinateReferenceSystem(4326)
 
 
-def get_project_crs():
+def getProjectCrs():
     """Return the project CRS."""
     return QgsProject.instance().crs()
 

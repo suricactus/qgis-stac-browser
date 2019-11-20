@@ -1,76 +1,82 @@
+from typing import Any
+
 import uuid
-import urllib
+from urllib.error import URLError
 
-from PyQt5 import uic, QtWidgets
+from PyQt5 import uic
+from PyQt5.QtWidgets import (QDialog, QWidget)
 
-from ..utils import ui
-from ..utils.logging import error
+from qgis.utils import iface
 
-from ..threads.load_api_data_thread import LoadAPIDataThread
-from ..models.api import API
+from stac_browser.utils import ui
+from stac_browser.utils.logging import error
+from stac_browser.utils.types import (DataT, HooksT)
+from stac_browser.threads.load_api_data_thread import LoadAPIDataThread
+from stac_browser.models.api import API
 
+FORM_CLASS: Any
 FORM_CLASS, _ = uic.loadUiType(ui.path('add_edit_api_dialog.ui'))
 
 
-class AddEditAPIDialog(QtWidgets.QDialog, FORM_CLASS):
-    def __init__(self, data={}, hooks={}, parent=None, iface=None):
+class AddEditAPIDialog(QDialog, FORM_CLASS):
+    def __init__(self, data: DataT = {}, hooks: HooksT = {}, parent: QWidget = None) -> None:
         super(AddEditAPIDialog, self).__init__(parent)
 
         self.data = data
         self.hooks = hooks
-        self.iface = iface
 
         self.setupUi(self)
 
-        self.populate_details()
-        self.populate_auth_method_combo()
+        self._populateDetails()
+        self._populateAuthMethodCombo()
 
-        self.cancelButton.clicked.connect(self.on_cancel_clicked)
-        self.removeButton.clicked.connect(self.on_remove_clicked)
-        self.saveAddButton.clicked.connect(self.on_save_add_clicked)
+        self.cancelButton.clicked.connect(self._onCancelClicked)
+        self.removeButton.clicked.connect(self._onRemoveClicked)
+        self.saveAddButton.clicked.connect(self._onSaveAddClicked)
 
-    def on_cancel_clicked(self):
+    def _onCancelClicked(self) -> None:
         self.reject()
 
-    def on_remove_clicked(self):
+    def _onRemoveClicked(self) -> None:
         self.hooks['remove_api'](self.api)
         self.accept()
 
-    def set_all_enabled(self, enabled):
-        self.urlEditBox.setEnabled(enabled)
-        self.authenticationCombo.setEnabled(enabled)
-        self.removeButton.setEnabled(enabled)
-        self.cancelButton.setEnabled(enabled)
-        self.saveAddButton.setEnabled(enabled)
+    def _setAllEnabled(self, is_enabled: bool) -> None:
+        self.urlEditBox.setEnabled(is_enabled)
+        self.authenticationCombo.setEnabled(is_enabled)
+        self.removeButton.setEnabled(is_enabled)
+        self.cancelButton.setEnabled(is_enabled)
+        self.saveAddButton.setEnabled(is_enabled)
 
-    def on_save_add_clicked(self):
-        self.set_all_enabled(False)
+    def _onSaveAddClicked(self) -> None:
+        self._setAllEnabled(False)
         self.saveAddButton.setText('Testing Connection...')
 
         api_id = str(uuid.uuid4())
+
         if self.api is not None:
             api_id = self.api.id
 
         api = API({'id': api_id, 'href': self.urlEditBox.text()})
-        self.loading_thread = LoadAPIDataThread(
-            api,
-            on_error=self.on_api_error,
-            on_finished=self.on_api_success)
+
+        self.loading_thread = LoadAPIDataThread(api)
+        self.loading_thread.error.connect(self._onApiError)
+        self.loading_thread.success.connect(self._onApiSuccess)
         self.loading_thread.start()
 
-    def on_api_error(self, e):
-        self.set_all_enabled(True)
+    def _onApiError(self, err: Exception) -> None:
+        self._setAllEnabled(True)
         if self.api is None:
             self.saveAddButton.setText('Add')
         else:
             self.saveAddButton.setText('Save')
 
-        if type(e) == urllib.error.URLError:
-            error(self.iface, f'Connection Failed; {e.reason}')
+        if type(err) == URLError:
+            error(iface, f'Connection Failed; {err.reason}')
         else:
-            error(self.iface, f'Connection Failed; {type(e).__name__}')
+            error(iface, f'Connection Failed; {type(err).__name__}')
 
-    def on_api_success(self, api):
+    def _onApiSuccess(self, api: API) -> None:
         if self.api is None:
             self.hooks['add_api'](api)
         else:
@@ -78,10 +84,10 @@ class AddEditAPIDialog(QtWidgets.QDialog, FORM_CLASS):
         self.accept()
 
     @property
-    def api(self):
+    def api(self) -> API:
         return self.data.get('api', None)
 
-    def populate_details(self):
+    def _populateDetails(self) -> None:
         if self.api is None:
             self.saveAddButton.setText('Add')
             self.removeButton.hide()
@@ -89,5 +95,5 @@ class AddEditAPIDialog(QtWidgets.QDialog, FORM_CLASS):
 
         self.urlEditBox.setText(self.api.href)
 
-    def populate_auth_method_combo(self):
+    def _populateAuthMethodCombo(self) -> None:
         self.authenticationCombo.addItem('No Auth')

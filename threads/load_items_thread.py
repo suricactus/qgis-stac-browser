@@ -1,59 +1,56 @@
+from typing import (List, Dict)
+
 import socket
-from PyQt5.QtCore import QThread, pyqtSignal
+from PyQt5.QtCore import (QThread, pyqtSignal)
 from urllib.error import URLError
 from ..models.api import API
+from ..models.item import Item
 
 
 class LoadItemsThread(QThread):
-    progress_signal = pyqtSignal(API, list, int)
-    error_signal = pyqtSignal(Exception)
-    finished_signal = pyqtSignal(list)
+    progress = pyqtSignal(API, list, int)
+    error = pyqtSignal(Exception)
+    finish = pyqtSignal(list)
 
-    def __init__(self, api_collections, extent, start_time, end_time, query,
-                 on_progress=None, on_error=None, on_finished=None):
+    def __init__(self, apiCollections: List[API], extent, startTime, endTime, query: Dict) -> None:
         QThread.__init__(self)
-        self.current_page = 0
+        self._currentPage = 0
 
-        self.api_collections = api_collections
+        self.apiCollections = apiCollections
         self.extent = extent
-        self.start_time = start_time
-        self.end_time = end_time
+        self.startTime = startTime
+        self.endTime = endTime
         self.query = query
-        self.on_progress = on_progress
-        self.on_error = on_error
-        self.on_finished = on_finished
-        self._current_collections = []
+        self._currentCollections = []
 
-        self.progress_signal.connect(self.on_progress)
-        self.error_signal.connect(self.on_error)
-        self.finished_signal.connect(self.on_finished)
-
-    def run(self):
+    def run(self) -> None:
         try:
-            all_items = []
-            for api_collection in self.api_collections:
-                self.current_page = 0
-                api = api_collection['api']
-                collections = api_collection['collections']
-                self._current_collections = collections
+            allItems: List[Item] = []
 
-                items = api.search_items(collections,
+            for apiCollection in self.apiCollections:
+                api = apiCollection['api']
+                collections = apiCollection['collections']
+
+                self._currentPage = 0
+                self._currentCollections = collections
+
+                items = api.searchItems(collections,
                                          self.extent,
-                                         self.start_time,
-                                         self.end_time,
+                                         self.startTime,
+                                         self.endTime,
                                          self.query,
-                                         on_next_page=self.on_next_page)
-                all_items.extend(items)
-            self.finished_signal.emit(all_items)
-        except URLError as e:
-            self.error_signal.emit(e)
-        except socket.timeout as e:
-            self.error_signal.emit(e)
+                                         onNextPage=self._onNextPage)
+                allItems.extend(items)
+            self.finish.emit(allItems)
+        except URLError as err:
+            self.error.emit(err)
+        except socket.timeout as err:
+            self.error.emit(err)
 
-    def on_next_page(self, api):
-        self.current_page += 1
-        self.progress_signal.emit(
+    def _onNextPage(self, api: None) -> None:
+        self._currentPage += 1
+        self.progress.emit(
             api,
-            self._current_collections,
-            self.current_page
+            self._currentCollections,
+            self._currentPage
         )

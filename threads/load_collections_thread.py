@@ -11,12 +11,12 @@ class LoadCollectionsThread(QThread):
     error = pyqtSignal(Exception, API)
     finished = pyqtSignal(list)
 
-    def __init__(self, api_list):
+    def __init__(self, apiList: API) -> None:
         QThread.__init__(self)
 
-        self.apiList = api_list
+        self.apiList = apiList
 
-    def run(self):
+    def run(self) -> None:
         apis = []
 
         for i, api in enumerate(self.apiList):
